@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ویراستار هوشمند (Gemini)</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600&display=swap');
+
+        /* ... [بخش زیادی از CSS قبلی بدون تغییر باقی می‌ماند] ... */
+        :root {
+            --primary-color: #4285F4;
+            --secondary-color: #34A853;
+            --error-color: #EA4335;
+            --suggestion-color: #FBBC05;
+            --translation-color: #4285F4;
+            --bg-color: #1e1e1e;
+            --text-color: #e0e0e0;
+            --input-bg: #2d2d2d;
+            --border-color: #444;
+            --tooltip-bg: #333;
+        }
+
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-size: 16px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background-color: var(--input-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+
+        /* ... [کدهای CSS مربوط به لاگین، تب‌ها، هدر، دکمه‌ها و... مثل قبل] ... */
+        #api-key-screen { padding: 40px; text-align: center; }
+        #api-key-screen h2 { color: var(--primary-color); margin-bottom: 20px; }
+        .input-group { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); }
+        #api-key-input { flex-grow: 1; padding: 12px 15px; border: none; background-color: #3a3a3a; color: var(--text-color); font-size: 1em; text-align: left; direction: ltr; }
+        #api-key-input:focus { outline: none; background-color: #444; }
+        #save-api-key-btn { padding: 12px 20px; border: none; background-color: var(--primary-color); color: white; font-size: 1em; cursor: pointer; transition: background-color 0.3s; font-weight: 600; }
+        #save-api-key-btn:hover { background-color: #5a95f5; }
+        #main-app { display: none; }
+        .app-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background-color: #252525; border-bottom: 1px solid var(--border-color); }
+        #logout-btn { background: none; border: 1px solid var(--error-color); color: var(--error-color); padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.9em; transition: all 0.3s; }
+        #logout-btn:hover { background-color: var(--error-color); color: white; }
+        .tab-container { display: flex; background-color: #252525; }
+        .tab-btn { flex-grow: 1; padding: 15px; background-color: transparent; border: none; border-bottom: 3px solid transparent; color: var(--text-color); font-size: 1.1em; cursor: pointer; transition: all 0.3s; font-weight: 600; }
+        .tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+        .tab-content { display: none; padding: 20px; min-height: 400px; }
+        .tab-content.active { display: block; }
+        textarea { width: 100%; min-height: 150px; background-color: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; font-size: 1.1em; margin-bottom: 15px; resize: vertical; box-sizing: border-box; direction: ltr; }
+        textarea[dir="rtl"] { direction: rtl; }
+        .action-btn { display: block; width: 100%; padding: 15px; font-size: 1.1em; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: background-color 0.3s; background-color: var(--secondary-color); color: white; }
+        .action-btn:disabled { background-color: #555; cursor: not-allowed; }
+        .action-btn:not(:disabled):hover { opacity: 0.9; }
+        .loader { text-align: center; padding: 20px; font-size: 1.2em; color: var(--primary-color); display: none; }
+
+        /* --- CSS اصلاح شده برای ویراستار و تولتیپ (سازگار با موبایل) --- */
+        #editor-output {
+            min-height: 100px;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            font-size: 1.2em;
+            direction: ltr;
+            line-height: 2;
+            white-space: pre-wrap;
+        }
+
+        .highlight {
+            position: relative;
+            cursor: pointer; /* تغییر به pointer برای نشان دادن قابلیت کلیک */
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: inline-block;
+        }
+
+        .correction-red {
+            background-color: rgba(234, 67, 53, 0.15);
+            border-bottom: 2px solid var(--error-color);
+            color: #ff8a80;
+        }
+        
+        .suggestion-yellow {
+            background-color: rgba(251, 188, 5, 0.15);
+            border-bottom: 2px dashed var(--suggestion-color);
+            color: #ffd54f;
+        }
+
+        .translation-blue {
+            background-color: rgba(66, 133, 244, 0.15);
+            border-bottom: 2px dotted var(--translation-color);
+            color: #90caf9;
+            font-weight: bold;
+        }
+
+        /* --- استایل تولتیپ (Tooltip) --- */
+        .highlight::after, .highlight::before {
+            opacity: 0; /* در ابتدا مخفی */
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.3s, visibility 0.3s;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+
+        /* خود تولتیپ (متن) */
+        .highlight::after {
+            content: attr(data-reason);
+            bottom: 100%;
+            background-color: var(--tooltip-bg);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            white-space: normal;
+            min-width: 200px;
+            max-width: 300px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        
+        /* فلش تولتیپ */
+        .highlight::before {
+            content: '';
+            bottom: 100%;
+            border: 8px solid transparent;
+            border-top-color: var(--tooltip-bg);
+            margin-bottom: -6px;
+        }
+
+        /* * این بخش جادوی کار است:
+         * تولتیپ هم در حالت hover دسکتاپ و هم با کلیک (کلاس .tooltip-visible) نمایش داده می‌شود
+         */
+        @media (hover: hover) {
+            .highlight:hover::after, .highlight:hover::before {
+                opacity: 1;
+                visibility: visible;
+            }
+        }
+
+        .highlight.tooltip-visible::after,
+        .highlight.tooltip-visible::before {
+            opacity: 1;
+            visibility: visible;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="api-key-screen">
+            <h2>🔑 ویراستار هوشمند Gemini</h2>
+            <p>لطفاً کلید Gemini API خود را وارد کنید.</p>
+            <div class="input-group">
+                <input type="password" id="api-key-input" placeholder="Enter API Key...">
+                <button id="save-api-key-btn">ورود</button>
+            </div>
+        </div>
+
+        <div id="main-app">
+            <header class="app-header">
+                <h3>✨ Master Mind App</h3>
+                <button id="logout-btn">خروج</button>
+            </header>
+            
+            <div class="tab-container">
+                <button class="tab-btn active" data-tab="editor">📝 ویراستار (Master Mind)</button>
+                <button class="tab-btn" data-tab="translator">🌍 مترجم</button>
+            </div>
+
+            <div class="loader" id="loader">در حال پردازش توسط Gemini...</div>
+
+            <div id="editor" class="tab-content active">
+                <p>متن خود را بنویسید (انگلیسی/فارسی ترکیبی):</p>
+                <textarea id="editor-input" rows="6" placeholder="Example: I want speak english with you so I can آشنا بشوم with you."></textarea>
+                <button id="check-text-btn" class="action-btn" style="background-color: var(--primary-color);">بررسی و بازنویسی هوشمند</button>
+                <h3 style="margin-top: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">متن اصلاح شده (Simplified & Clarified):</h3>
+                <div id="editor-output" dir="ltr"></div>
+            </div>
+
+            <div id="translator" class="tab-content">
+                <p>ترجمه ساده و روان (فارسی ↔ انگلیسی):</p>
+                <textarea id="translator-input" rows="6" placeholder="متن را اینجا وارد کنید..."></textarea>
+                <button id="translate-btn" class="action-btn">ترجمه کن</button>
+                <h3 style="margin-top: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">نتیجه ترجمه:</h3>
+                <textarea id="translator-output" rows="6" readonly placeholder="..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // ... [بخش زیادی از JS قبلی (گرفتن عناصر، لاگین، تب‌ها) بدون تغییر] ...
+            const apiKeyScreen = document.getElementById('api-key-screen');
+            const mainApp = document.getElementById('main-app');
+            const apiKeyInput = document.getElementById('api-key-input');
+            const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+            const logoutBtn = document.getElementById('logout-btn');
+            const loader = document.getElementById('loader');
+            const tabs = document.querySelectorAll('.tab-btn');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const checkTextBtn = document.getElementById('check-text-btn');
+            const editorInput = document.getElementById('editor-input');
+            const editorOutput = document.getElementById('editor-output');
+            const translateBtn = document.getElementById('translate-btn');
+            const translatorInput = document.getElementById('translator-input');
+            const translatorOutput = document.getElementById('translator-output');
+
+            let geminiApiKey = localStorage.getItem('geminiApiKey');
+
+            function checkLogin() {
+                if (geminiApiKey) {
+                    apiKeyScreen.style.display = 'none';
+                    mainApp.style.display = 'block';
+                } else {
+                    apiKeyScreen.style.display = 'block';
+                    mainApp.style.display = 'none';
+                }
+            }
+
+            saveApiKeyBtn.addEventListener('click', () => {
+                const key = apiKeyInput.value.trim();
+                if (key) {
+                    localStorage.setItem('geminiApiKey', key);
+                    geminiApiKey = key;
+                    checkLogin();
+                } else { alert('لطفاً کلید معتبر وارد کنید.'); }
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                if (confirm('آیا خارج می‌شوید؟')) {
+                    localStorage.removeItem('geminiApiKey');
+                    geminiApiKey = null;
+                    checkLogin();
+                }
+            });
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tabContents.forEach(c => c.classList.remove('active'));
+                    tab.classList.add('active');
+                    document.getElementById(tab.dataset.tab).classList.add('active');
+                });
+            });
+
+            async function callGeminiAPI(prompt) {
+                if (!geminiApiKey) { alert('لطفاً وارد شوید.'); return null; }
+                loader.style.display = 'block';
+                checkTextBtn.disabled = true; translateBtn.disabled = true;
+
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: { responseMimeType: "application/json" }
+                        })
+                    });
+                    if (!response.ok) throw new Error((await response.json()).error.message);
+                    const data = await response.json();
+                    return data.candidates[0].content.parts[0].text;
+                } catch (error) {
+                    alert(`Error: ${error.message}`);
+                    console.error(error);
+                    return null;
+                } finally {
+                    loader.style.display = 'none';
+                    checkTextBtn.disabled = false; translateBtn.disabled = false;
+                }
+            }
+
+            // --- EDITOR LOGIC (REVISED AND IMPROVED) ---
+            checkTextBtn.addEventListener('click', async () => {
+                const text = editorInput.value.trim();
+                if (!text) return;
+
+                // *** پرامپت جدید و بسیار دقیق‌تر ***
+                const masterPrompt = `
+                    You are Master Mind, an expert English editor.
+                    Your goal is to rewrite the user's text into "Simplified and Clarified English".
+                    The user might mix Farsi (Persian) words in the English text.
+
+                    **CRITICAL GOAL:** "Simplified" means using the **most common, simple, and basic vocabulary** possible.
+                    Prioritize words a beginner English learner would understand.
+                    For example, use "get to know" instead of "acquainted". Use "happy" instead of "elated".
+
+                    **INSTRUCTIONS:**
+                    1. Rewrite the entire text to be natural, simple, and clear English, following the **CRITICAL GOAL**.
+                    2. Use special XML-like tags to mark changes in the FINAL text:
+                       - <CORRECT original="wrong word" reason="brief reason">corrected word</CORRECT> for grammar/spelling.
+                       - <SUGGEST original="original phrase" reason="why this is better">better phrase</SUGGEST> for stylistic improvements.
+                       - <TRANSLATE original="کلمه فارسی" reason="Farsi translation">translated word</TRANSLATE> for Farsi words.
+                    3. **GRANULARITY IS KEY:** Apply these tags **as granularly as possible**.
+                       - BAD (Don't do this): <SUGGEST original='...to آشنا بشوی' reason='rewrite'>...so you can get to know</SUGGEST>
+                       - GOOD (Do this): <SUGGEST original='...to you to' reason='More natural phrasing'>...so you can</SUGGEST> <TRANSLATE original='آشنا بشوی' reason='Translated phrase'>get to know</TRANSLATE>
+
+                    You MUST return ONLY a single valid JSON object with this structure: { "markedUpText": "..." }
+
+                    EXAMPLE INPUT: "I want speak english with you and introduce myself to you to آشنا بشوی with me"
+                    EXPECTED OUTPUT (JSON):
+                    {
+                      "markedUpText": "I want <CORRECT original='speak' reason='Grammar: missing 'to''>to speak</CORRECT> English with you and introduce myself <SUGGEST original='to you to' reason='More natural and simple phrasing'>so you can</SUGGEST> <TRANSLATE original='آشنا بشوی' reason='Farsi for 'get to know''>get to know</TRANSLATE> me."
+                    }
+                    
+                    NOW PROCESS THIS TEXT:
+                    "${text}"
+                `;
+
+                const jsonResponse = await callGeminiAPI(masterPrompt);
+                if (jsonResponse) {
+                    try {
+                        const result = JSON.parse(jsonResponse);
+                        // پاک کردن هایلایت‌های قبلی
+                        editorOutput.innerHTML = '';
+                        
+                        // تبدیل تگ‌های سفارشی به HTML
+                        let finalHtml = result.markedUpText
+                            .replace(/<CORRECT original=['"](.*?)['"] reason=['"](.*?)['"]>(.*?)<\/CORRECT>/g, 
+                                '<span class="highlight correction-red" data-reason="[Correction] $2 (Original: \'$1\')">$3</span>')
+                            .replace(/<SUGGEST original=['"](.*?)['"] reason=['"](.*?)['"]>(.*?)<\/SUGGEST>/g, 
+                                '<span class="highlight suggestion-yellow" data-reason="[Suggestion] $2 (Original: \'$1\')">$3</span>')
+                            .replace(/<TRANSLATE original=['"](.*?)['"] reason=['"](.*?)['"]>(.*?)<\/TRANSLATE>/g, 
+                                '<span class="highlight translation-blue" data-reason="[Translation] $2 (Original: \'$1\')">$3</span>');
+                        
+                        editorOutput.innerHTML = finalHtml.replace(/\n/g, '<br>'); // حفظ خطوط جدید
+                    } catch (e) {
+                        console.error("JSON Parse Error:", e);
+                        editorOutput.innerText = "Error parsing Gemini response. Please try again.";
+                    }
+                }
+            });
+
+            // --- *** جدید: مدیریت کلیک برای تولتیپ‌های موبایل *** ---
+            editorOutput.addEventListener('click', (e) => {
+                const highlight = e.target.closest('.highlight');
+                
+                // اگر خارج از یک هایلایت کلیک شد، همه تولتیپ‌ها را ببند
+                if (!highlight) {
+                    document.querySelectorAll('.highlight.tooltip-visible').forEach(el => {
+                        el.classList.remove('tooltip-visible');
+                    });
+                    return;
+                }
+
+                // اگر روی یک هایلایت کلیک شد
+                e.stopPropagation(); // جلوگیری از بسته شدن فوری توسط listener والد
+
+                const wasActive = highlight.classList.contains('tooltip-visible');
+                
+                // ابتدا همه را ببند
+                document.querySelectorAll('.highlight.tooltip-visible').forEach(el => {
+                    el.classList.remove('tooltip-visible');
+                });
+
+                // اگر هایلایت کلیک شده فعال نبود، آن را فعال کن (Toggle)
+                if (!wasActive) {
+                    highlight.classList.add('tooltip-visible');
+                }
+                // اگر فعال بود، در مرحله قبل بسته شده است
+            });
+
+            // بستن تولتیپ با کلیک در هر جای دیگر صفحه
+            document.addEventListener('click', (e) => {
+                if (!editorOutput.contains(e.target)) {
+                    document.querySelectorAll('.highlight.tooltip-visible').forEach(el => {
+                        el.classList.remove('tooltip-visible');
+                    });
+                }
+            });
+
+
+            // --- TRANSLATOR LOGIC (Unchanged) ---
+            translateBtn.addEventListener('click', async () => {
+                const text = translatorInput.value.trim();
+                if (!text) return;
+                const isFarsi = /[\u0600-\u06FF]/.test(text);
+                const prompt = isFarsi 
+                    ? `As a professional Translator you must translate from Persian to Simplified and Clarified English. Return JSON: { "translatedText": "..." }\nText: "${text}"`
+                    : `As a professional Translator you must translate from English to Simplified and Clarified Persian. Return JSON: { "translatedText": "..." }\nText: "${text}"`;
+
+                const jsonResponse = await callGeminiAPI(prompt);
+                if (jsonResponse) {
+                    try {
+                        const result = JSON.parse(jsonResponse);
+                        translatorOutput.value = result.translatedText;
+                        translatorOutput.dir = isFarsi ? 'ltr' : 'rtl';
+                    } catch (e) {
+                         translatorOutput.value = jsonResponse; // Fallback if not JSON
+                    }
+                }
+            });
+
+            checkLogin();
+        });
+    </script>
+</body>
+</html>
